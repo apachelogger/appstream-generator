@@ -381,7 +381,8 @@ in { assert (url.isRemote); }
 body
 {
     import core.time;
-    import std.net.curl : CurlException, HTTP, FTP;
+    import std.exception : enforce;
+    import std.net.curl : CurlException, HTTP, FTP, HTTPStatusException;
 
     Nullable!SysTime ret;
 
@@ -396,10 +397,16 @@ body
     try {
         if (url.startsWith ("http")) {
             auto downloader = HTTP (url);
+            HTTP.StatusLine statusLine;
             downloader.connectTimeout = dur!"seconds" (30);
             downloader.dataTimeout = dur!"seconds" (30);
             downloader.onReceive = (data) => onReceiveCb (dest, data);
+            downloader.onReceiveStatusLine = (HTTP.StatusLine l) { statusLine = l; };
             downloader.perform();
+            enforce(statusLine.code / 100 == 2,
+                    new HTTPStatusException(statusLine.code,
+                                            format("HTTP request returned status code %d (%s)",
+                                                   statusLine.code, statusLine.reason)));
             if ("last-modified" in downloader.responseHeaders) {
                     auto lastmodified = downloader.responseHeaders["last-modified"];
                     ret = parseRFC822DateTime(lastmodified);
